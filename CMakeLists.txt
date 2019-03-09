@@ -138,6 +138,7 @@ include_directories(
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/vicon_track_multiple_node.cpp)
+add_executable(car src/car.cpp)
 add_executable(car1 src/car1.cpp)
 add_executable(car2 src/car2.cpp)
 
@@ -146,12 +147,14 @@ add_executable(car2 src/car2.cpp)
 ## target back to the shorter version for ease of user use
 ## e.g. "rosrun someones_pkg node" instead of "rosrun someones_pkg someones_pkg_node"
 # set_target_properties(${PROJECT_NAME}_node PROPERTIES OUTPUT_NAME node PREFIX "")
+target_link_libraries(car ${catkin_LIBRARIES})
 target_link_libraries(car1 ${catkin_LIBRARIES})
 target_link_libraries(car2 ${catkin_LIBRARIES})
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(car ${catkin_EXPORTED_TARGETS})
 add_dependencies(car1 ${catkin_EXPORTED_TARGETS})
 add_dependencies(car2 ${catkin_EXPORTED_TARGETS})
 
