@@ -105,17 +105,23 @@ void ViconTrack::vs_cb(const geometry_msgs::TransformStamped::ConstPtr& msg) {
 	// Get current position
 	CurPose.x = tfs_data.transform.translation.x;
 	CurPose.y = tfs_data.transform.translation.y;
-	ROS_INFO("Position: %f, %f   Theta: %f", CurPose.x, CurPose.y, CurPose.theta);
 	// Publish the Current Pose of car1
 	pose_pub.publish(CurPose);
 }
 // call back function to track if there are collisions with car2
 void ViconTrack::c2_cb(const geometry_msgs::Pose2D::ConstPtr& msg) {
-	geometry_msgs::Pose2D opose = *msg;
+	geometry_msgs::Pose2D car2Pose = *msg;		
+	/// calculate distance from both origins to get size of boundary box
+	float x_dist = CurPose.x - car2Pose.x;
+	float y_dist = CurPose.y - car2Pose.y;	
+	/// calculate difference in orientation
+	float theta = CurPose.theta - car2Pose.theta;
+	/// Account for object orientation in collision boundary
+	x_dist = x_dist - (y_dist * tan(theta));
+	y_dist = y_dist - (x_dist * tan(theta));
 	
 	/// if other car falls within threshold of collision boundary	
-	/// error check a little in case vicon fails
-	if(detectCollision(opose) && ((CurPose.x - opose.x) < 0.5) && ((CurPose.y - opose.y) < 0.5) ) {
+	if((x_dist <= x_threshold && x_dist >= -x_threshold) && (y_dist <= y_threshold && y_dist >= -y_threshold)) {
 		/// get car number that potentially it is colliding with
 		int cn;
 		if(carNum == 1) {
@@ -129,10 +135,18 @@ void ViconTrack::c2_cb(const geometry_msgs::Pose2D::ConstPtr& msg) {
 }
 // call back function to track if there are collisions with car3
 void ViconTrack::c3_cb(const geometry_msgs::Pose2D::ConstPtr& msg) {
-	geometry_msgs::Pose2D opose = *msg;
-	
+	geometry_msgs::Pose2D car3Pose = *msg;
+	/// calculate distance from both origins to get size of boundary box		
+	float x_dist = CurPose.x - car3Pose.x;
+	float y_dist = CurPose.y - car3Pose.y;	
+	/// calculate difference in orientation
+	float theta = CurPose.theta - car3Pose.theta;
+	/// Account for object orientation in collision boundary
+	x_dist = x_dist - (y_dist * tan(theta));
+	y_dist = y_dist - (x_dist * tan(theta));
+
 	/// if other car falls within threshold of collision boundary		
-	if(detectCollision(*msg) && ((CurPose.x - opose.x) < 0.5) && ((CurPose.y - opose.y) < 0.5)) {
+	if((x_dist <= x_threshold && x_dist >= -x_threshold) && (y_dist <= y_threshold && y_dist >= -y_threshold)) {
 		/// get car number that potentially it is colliding with
 		int cn;
 		if(carNum == 3) {
@@ -146,43 +160,51 @@ void ViconTrack::c3_cb(const geometry_msgs::Pose2D::ConstPtr& msg) {
 }
 /// consider otherPose as the pose of object b and curpose as object a
 /// returns true if collision between a and b
-/// Utilizes Seperability of Axis Theorem
 bool ViconTrack::detectCollision(geometry_msgs::Pose2D otherPose) {
-	bool case1 = false, case2 = false, case3 = false, case4 = false;
+	bool case1, case2, case3, case4;
 	/// if all of the following cases return true, then there is a collision
 
-	/// calculate the vector between the two origins
-	float vTx = otherPose.x - CurPose.x;
-	float vTy = otherPose.y - CurPose.y;
-	float vTmag = sqrt(pow(vTx, 2) + pow(vTy, 2));
-	float vTtheta = otherPose.theta - CurPose.theta;
-	
-	/// CASE I
-	float case1x = x_threshold + abs( (x_threshold * cos(vTtheta)) ) + abs((y_threshold * sin(vTtheta)));
-	if(case1x > (vTmag * cos(vTtheta - CurPose.theta))) {
+	/// CASE I - seperability around Ax
+	float bx_spread = (x_threshold * cos(otherPose.theta - CurPose.theta));
+	float bx_max = otherPose.x + bx_spread;
+	float bx_min = otherPose.x - bx_spread;
+	float ax_max = CurPose.x + x_threshold;
+	float ax_min = Curpose.x - x_threshold;
+	if( ((ax_min <= bx_max) && (ax_max >= bx_max)) || ((ax_min <= bx_min) && (ax_max >= bx_min)) ) {
 		case1 = true;
-		// ROS_INFO("-----CASE ONE ------");
-	}
-	/// CASE II
-	float case2x = y_threshold + abs((x_threshold * sin(vTtheta))) + abs((y_threshold * cos(vTtheta)));
-	if(case2x > (vTmag * sin(vTtheta - CurPose.theta))) {
-		case2 = true;
-		// ROS_INFO("-----CASE TWO ------");
-	}
-	/// CASE III
-	float case3x = x_threshold + abs((x_threshold * cos(vTtheta))) + abs((y_threshold * sin(vTtheta)));
-	if(case3x > (vTmag * cos(vTtheta - otherPose.theta))) {
-		case3 = true;
-		// ROS_INFO("-----CASE THREE ------");
-	}
-	/// CASE IIII
-	float case4x = y_threshold + abs((x_threshold * sin(vTtheta))) + abs((y_threshold * cos(vTtheta)));
-	if(case4x > (vTmag * sin(vTtheta - otherPose.theta))) {
-		case4 = true;
-		// ROS_INFO("-----CASE FOUR ------");
-	}
+	} 
 	
-	if( (case1 && case2) && (case3 && case4) ) {
+	/// CASE II - seperability around Ay
+	float by_spread = (y_threshold * cos(otherPose.theta - CurPose.theta));
+	float by_max = otherPose.y + by_spread;
+	float by_min = otherPose.y - by_spread;
+	float ay_max = CurPose.y + y_threshold;
+	float ay_min = Curpose.y - y_threshold;
+	if( ((ay_min <= by_max) && (ay_max >= by_max)) || ((ay_min <= by_min) && (ay_max >= by_min)) ) {
+		case2 = true;
+	} 
+	
+	/// CASE III - seperability around Bx
+	float ax_spread = (x_threshold * cos(CurPose.theta - otherPose.theta));
+	float ax_max = CurPose.x + ax_spread;
+	float ax_min = CurPose.x - ax_spread;
+	float bx_max = otherPose.x + x_threshold;
+	float bx_min = otherPose.x - x_threshold;
+	if( ((bx_min <= ax_max) && (bx_max >= ax_max)) || ((bx_min <= ax_min) && (bx_max >= ax_min)) ) {
+		case3 = true;
+	} 
+
+	/// CASE IIII - seperability around By
+	float by_spread = (y_threshold * cos(CurPose.theta - otherPose.theta));
+	float by_max = CurPose.y + by_spread;
+	float by_min = CurPose.y - by_spread;
+	float ay_max = otherPose.y + y_threshold;
+	float ay_min = otherPose.y - y_threshold;
+	if( ((by_min <= ay_max) && (by_max >= ay_max)) || ((by_min <= ay_min) && (by_max >= ay_min)) ) {
+		case4 = true;
+	} 
+
+	if(case1 && case2 && case3 && case4) {
 		return true;
 	} else {
 		return false;

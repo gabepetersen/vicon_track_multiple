@@ -105,17 +105,14 @@ void ViconTrack::vs_cb(const geometry_msgs::TransformStamped::ConstPtr& msg) {
 	// Get current position
 	CurPose.x = tfs_data.transform.translation.x;
 	CurPose.y = tfs_data.transform.translation.y;
-	ROS_INFO("Position: %f, %f   Theta: %f", CurPose.x, CurPose.y, CurPose.theta);
 	// Publish the Current Pose of car1
 	pose_pub.publish(CurPose);
 }
 // call back function to track if there are collisions with car2
 void ViconTrack::c2_cb(const geometry_msgs::Pose2D::ConstPtr& msg) {
-	geometry_msgs::Pose2D opose = *msg;
 	
 	/// if other car falls within threshold of collision boundary	
-	/// error check a little in case vicon fails
-	if(detectCollision(opose) && ((CurPose.x - opose.x) < 0.5) && ((CurPose.y - opose.y) < 0.5) ) {
+	if(detectCollision(*msg)) {
 		/// get car number that potentially it is colliding with
 		int cn;
 		if(carNum == 1) {
@@ -129,10 +126,8 @@ void ViconTrack::c2_cb(const geometry_msgs::Pose2D::ConstPtr& msg) {
 }
 // call back function to track if there are collisions with car3
 void ViconTrack::c3_cb(const geometry_msgs::Pose2D::ConstPtr& msg) {
-	geometry_msgs::Pose2D opose = *msg;
-	
 	/// if other car falls within threshold of collision boundary		
-	if(detectCollision(*msg) && ((CurPose.x - opose.x) < 0.5) && ((CurPose.y - opose.y) < 0.5)) {
+	if(detectCollision(*msg)) {
 		/// get car number that potentially it is colliding with
 		int cn;
 		if(carNum == 3) {
@@ -151,37 +146,60 @@ bool ViconTrack::detectCollision(geometry_msgs::Pose2D otherPose) {
 	bool case1 = false, case2 = false, case3 = false, case4 = false;
 	/// if all of the following cases return true, then there is a collision
 
-	/// calculate the vector between the two origins
-	float vTx = otherPose.x - CurPose.x;
-	float vTy = otherPose.y - CurPose.y;
-	float vTmag = sqrt(pow(vTx, 2) + pow(vTy, 2));
-	float vTtheta = otherPose.theta - CurPose.theta;
-	
-	/// CASE I
-	float case1x = x_threshold + abs( (x_threshold * cos(vTtheta)) ) + abs((y_threshold * sin(vTtheta)));
-	if(case1x > (vTmag * cos(vTtheta - CurPose.theta))) {
+	/// calculate the projection scalar values
+	float thetaDiff = otherPose.theta - CurPose.theta;
+	float bx_spread, by_spread, ax_spread, ay_spread;
+	// if( ((thetaDiff >= 0.785368) && (thetaDiff <= -0.785368)) 
+			// || ((thetaDiff <= 2.356195) && (thetaDiff >= -2.356195)) ) {
+		bx_spread = (x_threshold * cos(thetaDiff)) + (y_threshold * sin(thetaDiff));
+		by_spread = (y_threshold * cos(thetaDiff)) + (x_threshold * sin(thetaDiff));
+		ax_spread = (x_threshold * cos(-1 * thetaDiff)) + (y_threshold * sin(-1 * thetaDiff));
+		ay_spread = (y_threshold * cos(-1 * thetaDiff)) + (x_threshold * sin(-1 * thetaDiff));
+		
+		ROS_INFO("bx_spread: %f, by_spread: %f, ax_spread: %f, ay_spread: %f", bx_spread, by_spread, ax_spread, ay_spread);
+	// } else {
+		// bx_spread = (y_threshold * sin(thetaDiff));
+		// by_spread = (x_threshold * sin(thetaDiff));
+		// ax_spread = (y_threshold * sin(-1 * thetaDiff));
+		// ay_spread = (x_threshold * sin(-1 * thetaDiff));
+	// }
+
+	/// CASE I - seperability around Ax
+	float bx_max = otherPose.x + bx_spread;
+	float bx_min = otherPose.x - bx_spread;
+	float ax_max = CurPose.x + x_threshold;
+	float ax_min = CurPose.x - x_threshold;
+	if( ((ax_min <= bx_max) && (ax_max >= bx_max)) || ((ax_min <= bx_min) && (ax_max >= bx_min)) ) {
 		case1 = true;
-		// ROS_INFO("-----CASE ONE ------");
-	}
-	/// CASE II
-	float case2x = y_threshold + abs((x_threshold * sin(vTtheta))) + abs((y_threshold * cos(vTtheta)));
-	if(case2x > (vTmag * sin(vTtheta - CurPose.theta))) {
-		case2 = true;
-		// ROS_INFO("-----CASE TWO ------");
-	}
-	/// CASE III
-	float case3x = x_threshold + abs((x_threshold * cos(vTtheta))) + abs((y_threshold * sin(vTtheta)));
-	if(case3x > (vTmag * cos(vTtheta - otherPose.theta))) {
-		case3 = true;
-		// ROS_INFO("-----CASE THREE ------");
-	}
-	/// CASE IIII
-	float case4x = y_threshold + abs((x_threshold * sin(vTtheta))) + abs((y_threshold * cos(vTtheta)));
-	if(case4x > (vTmag * sin(vTtheta - otherPose.theta))) {
-		case4 = true;
-		// ROS_INFO("-----CASE FOUR ------");
 	}
 	
+	/// CASE II - seperability around Ay
+	float by_max = otherPose.y + by_spread;
+	float by_min = otherPose.y - by_spread;
+	float ay_max = CurPose.y + y_threshold;
+	float ay_min = CurPose.y - y_threshold;
+	if( ((ay_min <= by_max) && (ay_max >= by_max)) || ((ay_min <= by_min) && (ay_max >= by_min)) ) {
+		case2 = true;
+	} 
+	
+	/// CASE III - seperability around Bx
+	ax_max = CurPose.x + ax_spread;
+	ax_min = CurPose.x - ax_spread;
+	bx_max = otherPose.x + x_threshold;
+	bx_min = otherPose.x - x_threshold;
+	if( ((bx_min <= ax_max) && (bx_max >= ax_max)) || ((bx_min <= ax_min) && (bx_max >= ax_min)) ) {
+		case3 = true;
+	} 
+
+	/// CASE IIII - seperability around Bx
+	ay_max = CurPose.y + ay_spread;
+	ay_min = CurPose.y - ay_spread;
+	by_max = otherPose.y + y_threshold;
+	by_min = otherPose.y - y_threshold;
+	if( ((by_min <= ay_max) && (by_max >= ay_max)) || ((by_min <= ay_min) && (by_max >= ay_min)) ) {
+		case4 = true;
+	} 
+ 
 	if( (case1 && case2) && (case3 && case4) ) {
 		return true;
 	} else {
