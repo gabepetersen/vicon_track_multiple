@@ -1,5 +1,5 @@
 // Gabe Petersen
-// car.cpp - 6 Apr 2019
+// car1.cpp - 2 Mar 2019
 // Purpose: to get pose from vicon object and keep update on collisions of other objects
 
 #include "ros/ros.h"
@@ -61,8 +61,6 @@ class ViconTrack {
 		void c2_cb(const geometry_msgs::Pose2D::ConstPtr& msg);
 		void c3_cb(const geometry_msgs::Pose2D::ConstPtr& msg);
 		bool detectCollision(geometry_msgs::Pose2D otherPose);
-		bool evaluateProjections(float Norm[2], float dots1[8], float dots2[8]);
-		void getDots(float dots[], geometry_msgs::Pose2D pose);
 
 	private:	
 		// ros variables
@@ -146,118 +144,47 @@ void ViconTrack::c3_cb(const geometry_msgs::Pose2D::ConstPtr& msg) {
 		ROS_INFO("Car %d is Colliding with Car %d!", carNum, cn);
 	}		
 }
-/* detectCollision
- * Calculates if two objects of two center points with given height and width are colliding
- * Utilizes Seperability of Axis Theorem 
- * Returns true if collision between the two objects
- */
+/// consider otherPose as the pose of object b and curpose as object a
+/// returns true if collision between a and b
+/// Utilizes Seperability of Axis Theorem
 bool ViconTrack::detectCollision(geometry_msgs::Pose2D otherPose) {
 	bool case1 = false, case2 = false, case3 = false, case4 = false;
-	/// Get the dots of both the objects analyzed
-	float dots1[8], dots2[8];
-	getDots(dots1, CurPose);
-	getDots(dots2, otherPose);
-	
-	/// Check axes surrounding current box
-	/// Calculate Normal direction Vectors from Edges of Box Made from Dots1
-	float dirL1[2] = {(dots1[0] - dots1[6]), (dots1[1] - dots1[7])};
-	float dirW1[2] = {(dots1[0] - dots1[2]), (dots1[1] - dots1[3])};
-	float dirL2[2] = {(dots2[0] - dots2[6]), (dots2[1] - dots2[7])};
-	float dirW2[2] = {(dots2[0] - dots2[2]), (dots2[1] - dots2[3])};
-	
-	/// get magnitude of the normal direction vectors
-	float magL1 = pow((pow(dirL1[0], 2) + pow(dirL1[1], 2)), 0.5);
-	float magW1 = pow((pow(dirW1[0], 2) + pow(dirW1[1], 2)), 0.5);
-	float magL2 = pow((pow(dirL2[0], 2) + pow(dirL2[1], 2)), 0.5);
-	float magW2 = pow((pow(dirW2[0], 2) + pow(dirW2[1], 2)), 0.5);
+	/// if all of the following cases return true, then there is a collision
 
-	/// normalize the direction vectors to get the unit axes
-	float NormL1[2] = {(dirL1[0] / magL1), (dirL1[1] / magL1)};
-	float NormW1[2] = {(dirW1[0] / magW1), (dirW1[1] / magW1)};
-	float NormL2[2] = {(dirL2[0] / magL2), (dirL2[1] / magL2)};
-	float NormW2[2] = {(dirW2[0] / magW2), (dirW2[1] / magW2)};
+	/// calculate the vector between the two origins
+	float vTx = otherPose.x - CurPose.x;
+	float vTy = otherPose.y - CurPose.y;
+	float vTmag = sqrt(pow(vTx, 2) + pow(vTy, 2));
+	float vTtheta = otherPose.theta - CurPose.theta;
 	
-	/// evalute across x-axis of current object
-	case1 = evaluateProjections(NormL1, dots1, dots2);
-	/// automatically return false if one of the cases return false so no xtra computing
-	if(!case1)
-		return false;
-	/// evalute across y-axis of current object
-	case2 = evaluateProjections(NormW1, dots1, dots2);
-	if(!case2)
-		return false;
-	/// evalute across x-axis of other object
-	case3 = evaluateProjections(NormL2, dots1, dots2);
-	if(!case3)
-		return false;
-	/// evalute across y-axis of other object
-	case4 = evaluateProjections(NormW2, dots1, dots2);	
-	if(!case4)
-		return false;
-
-	/// if all cases return true, there is a collision!
-	return true;
-}
-/* evaluateProjections
- * Will calculate the projections of the object dots onto specified axis: Norm[2]
- * Will evaluate if the lines made by the min and max are overlapping - if so possible collision
- * Returns a bool - true = possible collision, false = no collision
- */	
-bool ViconTrack::evaluateProjections(float Norm[2], float dots1[8], float dots2[8]) {
-	/// Project along x-axis of current box
-	float min1 = 100000, min2 = 100000, max1 = 0, max2 = 0;
-	float dot_proj1, dot_proj2;
-	/// For each dot projection, find the min and max
-	for(int i = 0; i < 8; i = i+2) {
-		// dot product of object axis and dots of object to find scalar projections
-		dot_proj1 = (Norm[0] * dots1[i]) + (Norm[1] * dots1[i+1]);
-		// find min/max of the scalar projections
-		if(dot_proj1 < min1) {
-			min1 = dot_proj1;
-		} else if(dot_proj1 > max1) {
-			max1 = dot_proj1;
-		}
-		// dot product of object axis and dots of object to find scalar projections
-		dot_proj2 = (Norm[0] * dots2[i]) + (Norm[1] * dots2[i+1]);
-		// find min/max of the scalar projections
-		if(dot_proj2 < min2) {
-			min2 = dot_proj2;
-		} else if(dot_proj2 > max2) {
-			max2 = dot_proj2;
-		}
+	/// CASE I
+	float case1x = x_threshold + abs( (x_threshold * cos(vTtheta)) ) + abs((y_threshold * sin(vTtheta)));
+	if(case1x > (vTmag * cos(vTtheta - CurPose.theta))) {
+		case1 = true;
+		// ROS_INFO("-----CASE ONE ------");
+	}
+	/// CASE II
+	float case2x = y_threshold + abs((x_threshold * sin(vTtheta))) + abs((y_threshold * cos(vTtheta)));
+	if(case2x > (vTmag * sin(vTtheta - CurPose.theta))) {
+		case2 = true;
+		// ROS_INFO("-----CASE TWO ------");
+	}
+	/// CASE III
+	float case3x = x_threshold + abs((x_threshold * cos(vTtheta))) + abs((y_threshold * sin(vTtheta)));
+	if(case3x > (vTmag * cos(vTtheta - otherPose.theta))) {
+		case3 = true;
+		// ROS_INFO("-----CASE THREE ------");
+	}
+	/// CASE IIII
+	float case4x = y_threshold + abs((x_threshold * sin(vTtheta))) + abs((y_threshold * cos(vTtheta)));
+	if(case4x > (vTmag * sin(vTtheta - otherPose.theta))) {
+		case4 = true;
+		// ROS_INFO("-----CASE FOUR ------");
 	}
 	
-	/// check for a gap between the two projected lines
-	/// if there is a gap, case 1 is false and no possible collision
-	if( ((min2 - max1) > 0) && ((max2 - max1) > 0) ) {
-		return false;
-	} else if( ((min1 - max2) > 0) && ((max1 - max2) > 0) ) {
-		return false;
-	} else {
-		/// if theres not a gap, case 1 is true and there is a possible collision
+	if( (case1 && case2) && (case3 && case4) ) {
 		return true;
-	}
-}
-
-/* getDots
- * Will calculate the Points/Dots of the corners of the ecapsulating boundary box
- * Returns thru reference an array of dots = [dot1x, dot1y, dot2x, ... , dot4y]
- */
-void ViconTrack::getDots(float dots[], geometry_msgs::Pose2D pose) {
-	/// get radius and angle between width and height
-	float r = pow( (pow( (x_threshold/2) , 2) + pow( (y_threshold/2) , 2)), 0.5);
-	float phi = atan( (y_threshold/2) / (x_threshold/2) );
-	/// calculate array of points from the required boundary shape
-	/// First Dot
-	dots[0] = pose.x + r*cos(phi + pose.theta);
-	dots[1] = pose.y + r*sin(phi + pose.theta);
-	/// Second Dot
-	dots[2] = pose.x + r*cos((M_PI - phi) + pose.theta);
-	dots[3] = pose.y + r*sin((M_PI - phi) + pose.theta);
-	/// Third Dot
-	dots[4] = pose.x - r*cos(phi + pose.theta);
-	dots[5] = pose.y - r*sin(phi + pose.theta);
-	/// Fourth Dot
-	dots[6] = pose.x - r*cos((M_PI - phi) + pose.theta);
-	dots[7] = pose.y - r*sin((M_PI - phi) + pose.theta);
+	} else {
+		return false;
+	}	
 }

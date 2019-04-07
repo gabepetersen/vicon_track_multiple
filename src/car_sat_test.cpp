@@ -61,8 +61,8 @@ class ViconTrack {
 		void c2_cb(const geometry_msgs::Pose2D::ConstPtr& msg);
 		void c3_cb(const geometry_msgs::Pose2D::ConstPtr& msg);
 		bool detectCollision(geometry_msgs::Pose2D otherPose);
-		bool evaluateProjections(float Norm[2], float dots1[8], float dots2[8]);
-		void getDots(float dots[], geometry_msgs::Pose2D pose);
+		bool evaluateProjections(float Norm[2], float dots1[8], float dots2[8])
+		float* getDots(geometry_msgs::Pose2D pose)
 
 	private:	
 		// ros variables
@@ -154,9 +154,8 @@ void ViconTrack::c3_cb(const geometry_msgs::Pose2D::ConstPtr& msg) {
 bool ViconTrack::detectCollision(geometry_msgs::Pose2D otherPose) {
 	bool case1 = false, case2 = false, case3 = false, case4 = false;
 	/// Get the dots of both the objects analyzed
-	float dots1[8], dots2[8];
-	getDots(dots1, CurPose);
-	getDots(dots2, otherPose);
+	float dots1[8] = getDots(CurPose);
+	float dots2[8] = getDots(otherPose);
 	
 	/// Check axes surrounding current box
 	/// Calculate Normal direction Vectors from Edges of Box Made from Dots1
@@ -174,24 +173,24 @@ bool ViconTrack::detectCollision(geometry_msgs::Pose2D otherPose) {
 	/// normalize the direction vectors to get the unit axes
 	float NormL1[2] = {(dirL1[0] / magL1), (dirL1[1] / magL1)};
 	float NormW1[2] = {(dirW1[0] / magW1), (dirW1[1] / magW1)};
-	float NormL2[2] = {(dirL2[0] / magL2), (dirL2[1] / magL2)};
-	float NormW2[2] = {(dirW2[0] / magW2), (dirW2[1] / magW2)};
+	float NormL1[2] = {(dirL2[0] / magL2), (dirL2[1] / magL2)};
+	float NormW1[2] = {(dirW2[0] / magW2), (dirW2[1] / magW2)};
 	
 	/// evalute across x-axis of current object
-	case1 = evaluateProjections(NormL1, dots1, dots2);
+	bool case1 = evaluateProjections(NormL1, dots1, dots2);
 	/// automatically return false if one of the cases return false so no xtra computing
 	if(!case1)
 		return false;
 	/// evalute across y-axis of current object
-	case2 = evaluateProjections(NormW1, dots1, dots2);
+	bool case2 = evaluateProjections(NormW1, dots1, dots2);
 	if(!case2)
 		return false;
 	/// evalute across x-axis of other object
-	case3 = evaluateProjections(NormL2, dots1, dots2);
+	bool case3 = evaluateProjections(NormL2, dots1, dots2);
 	if(!case3)
 		return false;
 	/// evalute across y-axis of other object
-	case4 = evaluateProjections(NormW2, dots1, dots2);	
+	bool case4 = evaluateProjections(NormW2, dots1, dots2);	
 	if(!case4)
 		return false;
 
@@ -206,7 +205,7 @@ bool ViconTrack::detectCollision(geometry_msgs::Pose2D otherPose) {
 bool ViconTrack::evaluateProjections(float Norm[2], float dots1[8], float dots2[8]) {
 	/// Project along x-axis of current box
 	float min1 = 100000, min2 = 100000, max1 = 0, max2 = 0;
-	float dot_proj1, dot_proj2;
+	float dot_proj1, data_proj2;
 	/// For each dot projection, find the min and max
 	for(int i = 0; i < 8; i = i+2) {
 		// dot product of object axis and dots of object to find scalar projections
@@ -229,9 +228,9 @@ bool ViconTrack::evaluateProjections(float Norm[2], float dots1[8], float dots2[
 	
 	/// check for a gap between the two projected lines
 	/// if there is a gap, case 1 is false and no possible collision
-	if( ((min2 - max1) > 0) && ((max2 - max1) > 0) ) {
+	if( ((min2 - max1) > 0) && ((max2 - max1) > 0)) ) {
 		return false;
-	} else if( ((min1 - max2) > 0) && ((max1 - max2) > 0) ) {
+	} else if( ((min1 - max2) > 0) && ((max1 - max2) > 0)) ) {
 		return false;
 	} else {
 		/// if theres not a gap, case 1 is true and there is a possible collision
@@ -241,13 +240,14 @@ bool ViconTrack::evaluateProjections(float Norm[2], float dots1[8], float dots2[
 
 /* getDots
  * Will calculate the Points/Dots of the corners of the ecapsulating boundary box
- * Returns thru reference an array of dots = [dot1x, dot1y, dot2x, ... , dot4y]
+ * Returns an array of dots = [dot1x, dot1y, dot2x, ... , dot4y]
  */
-void ViconTrack::getDots(float dots[], geometry_msgs::Pose2D pose) {
+float* ViconTrack::getDots(geometry_msgs::Pose2D pose) {
 	/// get radius and angle between width and height
 	float r = pow( (pow( (x_threshold/2) , 2) + pow( (y_threshold/2) , 2)), 0.5);
 	float phi = atan( (y_threshold/2) / (x_threshold/2) );
-	/// calculate array of points from the required boundary shape
+	/// calculate array of dots
+	float dots[8] = {0};	/// dots = [dot1x, dot1y, dot2x, ... dot4y]
 	/// First Dot
 	dots[0] = pose.x + r*cos(phi + pose.theta);
 	dots[1] = pose.y + r*sin(phi + pose.theta);
@@ -260,4 +260,5 @@ void ViconTrack::getDots(float dots[], geometry_msgs::Pose2D pose) {
 	/// Fourth Dot
 	dots[6] = pose.x - r*cos((M_PI - phi) + pose.theta);
 	dots[7] = pose.y - r*sin((M_PI - phi) + pose.theta);
+	return dots;
 }
