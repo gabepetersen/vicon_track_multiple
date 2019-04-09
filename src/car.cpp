@@ -83,10 +83,16 @@ class ViconTrack {
 int main(int argc, char** argv) {
 	// initialize the node
 	ros::init(argc, argv, "default");
+	
 	// instantiate the class
 	ViconTrack vt;
-	
-	ros::spin();	
+
+	// declare sample rate
+	ros::Rate r(100);
+	while(ros::ok()) {
+		r.sleep();
+		ros::spinOnce();
+	}	
 	return 0;
 }
 
@@ -107,7 +113,7 @@ void ViconTrack::vs_cb(const geometry_msgs::TransformStamped::ConstPtr& msg) {
 	// Get current position
 	CurPose.x = tfs_data.transform.translation.x;
 	CurPose.y = tfs_data.transform.translation.y;
-	ROS_INFO("Position: %f, %f   Theta: %f", CurPose.x, CurPose.y, CurPose.theta);
+	// ROS_INFO("Position: %f, %f   Theta: %f", CurPose.x, CurPose.y, CurPose.theta);
 	// Publish the Current Pose of car1
 	pose_pub.publish(CurPose);
 }
@@ -117,7 +123,7 @@ void ViconTrack::c2_cb(const geometry_msgs::Pose2D::ConstPtr& msg) {
 	
 	/// if other car falls within threshold of collision boundary	
 	/// error check a little in case vicon fails
-	if(detectCollision(opose) && ((CurPose.x - opose.x) < 0.5) && ((CurPose.y - opose.y) < 0.5) ) {
+	if(detectCollision(opose)) {
 		/// get car number that potentially it is colliding with
 		int cn;
 		if(carNum == 1) {
@@ -178,12 +184,12 @@ bool ViconTrack::detectCollision(geometry_msgs::Pose2D otherPose) {
 	float NormW2[2] = {(dirW2[0] / magW2), (dirW2[1] / magW2)};
 	
 	/// evalute across x-axis of current object
-	case1 = evaluateProjections(NormL1, dots1, dots2);
+	case1 = evaluateProjections(NormW1, dots1, dots2);
 	/// automatically return false if one of the cases return false so no xtra computing
 	if(!case1)
 		return false;
 	/// evalute across y-axis of current object
-	case2 = evaluateProjections(NormW1, dots1, dots2);
+	case2 = evaluateProjections(NormL1, dots1, dots2);
 	if(!case2)
 		return false;
 	/// evalute across x-axis of other object
@@ -205,7 +211,7 @@ bool ViconTrack::detectCollision(geometry_msgs::Pose2D otherPose) {
  */	
 bool ViconTrack::evaluateProjections(float Norm[2], float dots1[8], float dots2[8]) {
 	/// Project along x-axis of current box
-	float min1 = 100000, min2 = 100000, max1 = 0, max2 = 0;
+	float min1 = 1000, min2 = 1000, max1 = -1000, max2 = -1000;
 	float dot_proj1, dot_proj2;
 	/// For each dot projection, find the min and max
 	for(int i = 0; i < 8; i = i+2) {
@@ -229,13 +235,17 @@ bool ViconTrack::evaluateProjections(float Norm[2], float dots1[8], float dots2[
 	
 	/// check for a gap between the two projected lines
 	/// if there is a gap, case 1 is false and no possible collision
-	if( ((min2 - max1) > 0) && ((max2 - max1) > 0) ) {
-		return false;
-	} else if( ((min1 - max2) > 0) && ((max1 - max2) > 0) ) {
-		return false;
+	if( (min1 < min2) && (min2 < max1) ) {
+		return true;
+	} else if( (min1 < max2) && (max2 < max1) ) {
+		return true;
+	} else if( (min2 < min1) && (min1 < max2) ) {
+		return true;
+	} else if( (min2 < max1) && (max1 < max2) ) {
+		return true;
 	} else {
 		/// if theres not a gap, case 1 is true and there is a possible collision
-		return true;
+		return false;
 	}
 }
 

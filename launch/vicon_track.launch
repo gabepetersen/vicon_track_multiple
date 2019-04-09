@@ -8,16 +8,16 @@
 
 		<!-- Threshold for collision detection -->
 		<!-- i.e. What distance the collision box edge should be from the vicon obj origin -->
-		<param name="x_thresh" type="double" value="0.15"/>
-		<param name="y_thresh" type="double" value="0.10" />
+		<param name="x_thresh" type="double" value="0.18"/>
+		<param name="y_thresh" type="double" value="0.13" />
 	</node>
 	
-	<!-- <node name="car2" pkg="vicon_track_multiple" type="car" output="screen"> -->
-		<!-- <param name="number" type="int" value="2"/> -->
-		<!-- <param name="obj_name" type="string" value="car2"/> -->
-		<!-- <param name="x_thresh" type="double" value="0.15"/> -->
-		<!-- <param name="y_thresh" type="double" value="0.10" /> -->
-	<!-- </node> -->
+	<node name="car2" pkg="vicon_track_multiple" type="car" output="screen">
+		<param name="number" type="int" value="2"/> 
+		<param name="obj_name" type="string" value="car2"/> 
+		<param name="x_thresh" type="double" value="0.18"/> 
+		<param name="y_thresh" type="double" value="0.13" /> 
+	</node>
 
 	<!-- <node name="car3" pkg="vicon_track_multiple" type="car" output="screen">  -->
 	<!-- 	<param name="number" type="int" value="3"/>  -->
